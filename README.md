@@ -21,25 +21,32 @@ quiz, post, or change anything in your account. That is enforced in the code —
 ```
 $ easel today
 Due soon
-  Fri, 17 Jul, 12:00 pm · 11d · BIO101 · Assessment 1 Part B · PROCTORED hands-off
+  Fri, 12 Sep, 12:00 pm · 9d · ABC101 · Assignment 2 · PROCTORED hands-off
 Missing
   no missing submissions reported
 Announcements
-  06 Jul, 11:07 am · CHEM101 · Lecture Module 3.2
-  06 Jul, 07:00 am · BIO101 · Weekly study session times
+  03 Sep, 10:00 am · XYZ200 · Week 5 lecture notes are up
+  02 Sep, 09:00 am · ABC101 · Drop-in help session this week
 
 $ easel marks
-BIO101  · 72.0% current grade (graded so far) · 7.2% of final locked in
-CHEM101 · 60.0% current grade (graded so far) · 6.0% of final locked in
-BIO101  · Assessment 1 Part A · 18/25 · 72.0% · pass
-CHEM101 · Module Test 1     · 6/10  · 60.0% · pass
+ABC101 · 75.0% current grade (graded so far) · 15.0% of final locked in
+XYZ200 · 68.0% current grade (graded so far) · 10.0% of final locked in
+ABC101 · Quiz 1        · 15/20 · 75.0% · pass
+XYZ200 · Assignment 1  · 17/25 · 68.0% · pass
 ```
 
-> Example output above uses placeholder subjects and figures.
+> Illustrative output — subjects and figures are placeholders.
 
 ## Install
 
-Requires **Node.js 20+**. Install globally so the `easel` command is on your PATH:
+**Quick install (macOS)** — installs Node.js if you don't have it, installs easel, and runs the setup
+wizard, all in one go:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/vincenthopf/easel/main/setup.sh)"
+```
+
+**Manual** — requires **Node.js 20+**, then install globally so the `easel` command is on your PATH:
 
 ```bash
 npm install -g @vincenthopf/easel
