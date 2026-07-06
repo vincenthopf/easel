@@ -21,13 +21,31 @@ export class ConfigError extends Error {
   override name = "ConfigError";
 }
 
+/** Directory for user config (~/.config/easel), created on demand. */
+export function configDir(): string {
+  const base = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
+  const dir = join(base, "easel");
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/** The .env file the setup wizard writes and a global install reads. */
+export function configEnvPath(): string {
+  return join(configDir(), ".env");
+}
+
 function projectRoot(): string {
   // src/lib/config.ts -> repo root; dist/lib/config.js -> repo root.
   return dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 }
 
 function loadDotenv(): void {
-  const candidates = [join(process.cwd(), ".env"), join(projectRoot(), ".env")];
+  // Priority: current dir (dev), then user config (global install), then repo root.
+  const candidates = [
+    join(process.cwd(), ".env"),
+    join(configDir(), ".env"),
+    join(projectRoot(), ".env"),
+  ];
   const seen = new Set<string>();
 
   for (const path of candidates) {
@@ -74,13 +92,13 @@ export function loadConfig(opts: { requireToken?: boolean } = {}): Config {
 
   if (requireToken && !token) {
     throw new ConfigError(
-      "No Canvas token found. Copy .env.example to .env and set CANVAS_TOKEN " +
-        "(Canvas → Account → Settings → New Access Token).",
+      "No Canvas token found. Run `easel init` to set it up " +
+        "(or set CANVAS_TOKEN — Canvas → Account → Settings → New Access Token).",
     );
   }
   if (requireToken && !baseUrl) {
     throw new ConfigError(
-      "CANVAS_BASE_URL is not set (e.g. https://canvas.youruniversity.edu).",
+      "CANVAS_BASE_URL is not set. Run `easel init` (e.g. https://canvas.youruniversity.edu).",
     );
   }
 

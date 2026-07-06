@@ -1,6 +1,6 @@
 {
   "name": "@vincenthopf/easel",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "Read-only Canvas study CLI — a calmer, context-lean front door to deadlines, marks, modules, announcements, reading lists and the library.",
   "type": "module",
   "packageManager": "pnpm@10.12.3",

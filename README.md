@@ -51,23 +51,33 @@ pnpm install && pnpm build
 
 ## Setup
 
-1. In Canvas: **Account → Settings → New Access Token**, copy it.
-2. `cp .env.example .env` and fill in your own values:
-   ```ini
-   CANVAS_BASE_URL=https://canvas.youruniversity.edu   # your Canvas host
-   CANVAS_TOKEN=your-token-here
-   # Optional, for `easel library`:
-   LIBRARY_BASE_URL=https://library.youruniversity.edu
-   ```
-3. `easel whoami` — confirms it can see your account.
+**Easiest — run the wizard:**
 
-Your token stays in `.env` (gitignored) and is sent only to your own Canvas host. The tool reads only
-*your* data — the token can't see anyone else's.
+```bash
+easel init
+```
+
+It asks for your Canvas URL and access token (Canvas → Account → Settings → New Access Token), saves
+them to a private config file (`~/.config/easel/.env`), and checks the token works — so `easel` runs from
+any folder.
+
+**Or by hand:** `cp .env.example .env` and fill in:
+
+```ini
+CANVAS_BASE_URL=https://canvas.youruniversity.edu   # your Canvas host
+CANVAS_TOKEN=your-token-here
+# Optional, for `easel library`:
+LIBRARY_BASE_URL=https://library.youruniversity.edu
+```
+
+Your token stays local (gitignored `.env` or the config file) and is sent only to your own Canvas host.
+The tool reads only *your* data — the token can't see anyone else's.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
+| `easel init` | Interactive setup: save your Canvas URL, token and library |
 | `easel today` | Briefing: what's genuinely outstanding, missing work, recent announcements |
 | `easel due [--days N] [--course C]` | Upcoming assignments, sorted; submitted items marked done, proctored items flagged |
 | `easel marks [--course C]` | Per-assessment scores, 50% pass-line read, and the graded-so-far current grade |
