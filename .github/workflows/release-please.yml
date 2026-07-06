@@ -24,16 +24,27 @@ jobs:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC — no npm token needed (Trusted Publishing)
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "22"
           registry-url: https://registry.npmjs.org
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm publish --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Trusted Publishing (OIDC) needs npm >= 11.5.1
+      - run: npm install -g npm@latest
+      # Publish only if this exact version isn't already on npm, so a one-time
+      # bootstrap publish and CI never collide on the same version.
+      - name: Publish to npm (OIDC, idempotent)
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "@vincenthopf/easel@${VERSION}" version >/dev/null 2>&1; then
+            echo "@vincenthopf/easel@${VERSION} already published — skipping."
+          else
+            npm publish
+          fi
