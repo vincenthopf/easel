@@ -1,0 +1,63 @@
+easel — a calmer front door to Canvas
+=====================================
+
+What it is
+----------
+A read-only command-line tool that makes your Canvas actually usable:
+your deadlines, marks, feedback, module content, announcements, discussions,
+embedded file downloads and the public library — all from the terminal, in
+plain text or lean JSON your agents can read.
+
+It is READ-ONLY by design. It only ever asks Canvas and the public library for
+information; it can never submit work, take a quiz, post, or change anything
+in your account. The HTTP client exposes GET only.
+
+Setup
+-----
+1. Install pnpm if you don't have it.
+2. In this folder:  cp .env.example .env  and paste your own Canvas token.
+   (Canvas → Account → Settings → New Access Token.)
+3. pnpm install
+4. pnpm build
+5. node dist/entry.js whoami
+
+Everyday commands
+-----------------
+  easel whoami                Confirm the account behind the token
+  easel courses               Your real subjects (add --all to include admin shells)
+  easel today                 Briefing: due soon, missing work, announcements
+  easel due --days 21         Assignments due soon, across subjects
+  easel marks                 Scores, pass-line read, weighted current grade projection
+  easel modules BIO101       Module list and page slugs for a subject
+  easel page BIO101 <slug>   Fetch one module page as clean text
+  easel announcements         Recent announcements across subjects
+  easel discussions CHEM101   Discussion forums for a subject
+  easel files BIO101         File links embedded in assignments/pages/announcements
+  easel pull 11111/33333   Resolve Canvas file metadata and download the signed URL
+  easel library search "<q>"  Search the public library guides (no login)
+  easel library fetch <url>   Pull one public library page as clean text
+
+Content commands are compact by default. Use --full for full text,
+--objective "focus" for relevant passages, -o <file> to write full content to
+disk and print only path/bytes/title, and --json for lean shaped DTOs.
+
+Rate limiting
+-------------
+Every request — Canvas and library alike — is paced like a human: a randomised
+gap between calls and a hard ceiling per minute, shared across all invocations
+on this machine through a lock and state file in the cache dir. HTTP 429 and
+403 "rate limit exceeded" responses back off exponentially with jitter.
+
+Where the lines are
+-------------------
+Fine, by design: reading your own data to organise, understand and plan.
+Not built, on purpose: anything that writes to Canvas, anything that operates
+during a proctored Respondus/webcam assessment, per-question quiz review, or
+Canvas conversations/planner/calendar writes.
+
+Future browser-engine phase
+---------------------------
+Reading List/eReserve and the three external LTI tabs need an authenticated
+browser session rather than plain Canvas GET APIs. Keep that out of the current
+read-only HTTP client; handle it later as a separate browser engine phase with
+explicit human-paced navigation and no assessment automation.

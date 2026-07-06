@@ -1,0 +1,67 @@
+{
+  "name": "@vincenthopf/easel",
+  "version": "0.1.0",
+  "description": "Read-only Canvas study CLI — a calmer, context-lean front door to deadlines, marks, modules, announcements, reading lists and the library.",
+  "type": "module",
+  "license": "MIT",
+  "author": "vincenthopf",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vincenthopf/easel.git"
+  },
+  "homepage": "https://github.com/vincenthopf/easel#readme",
+  "bugs": "https://github.com/vincenthopf/easel/issues",
+  "keywords": [
+    "canvas",
+    "lms",
+    "instructure",
+    "cli",
+    "study",
+    "oclif"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "easel": "./dist/entry.js"
+  },
+  "files": [
+    "dist",
+    "PROJECT.txt"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "oclif": {
+    "bin": "easel",
+    "dirname": "easel",
+    "commands": "./dist/commands",
+    "helpClass": "./dist/help",
+    "enableJsonFlag": true,
+    "topicSeparator": " ",
+    "helpOptions": {
+      "hideAliasesFromRoot": true
+    },
+    "topics": {
+      "library": {
+        "description": "Search and fetch the public library (no login needed)"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/entry.js",
+    "dev": "node --experimental-strip-types src/entry.ts",
+    "easel": "node --experimental-strip-types src/entry.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepare": "pnpm build",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@oclif/core": "^4.0.0",
+    "chalk": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}
