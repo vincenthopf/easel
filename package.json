@@ -24,7 +24,7 @@
     "access": "public"
   },
   "bin": {
-    "easel": "./dist/entry.js"
+    "easel": "dist/entry.js"
   },
   "files": [
     "dist",
