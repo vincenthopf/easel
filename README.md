@@ -39,39 +39,76 @@ CHEM101 · Module Test 1     · 6/10  · 60.0% · pass
 
 ## Install
 
-```bash
-# Global (recommended for agents)
-npm install -g @vincenthopf/easel@latest
-# or: pnpm add -g @vincenthopf/easel
+Requires **Node.js 20+**. Install globally so the `easel` command is on your PATH:
 
-# From source
-git clone https://github.com/vincenthopf/easel.git && cd easel
-pnpm install && pnpm build
+```bash
+npm install -g @vincenthopf/easel
+# or: pnpm add -g @vincenthopf/easel
 ```
 
-## Setup
+Check it worked:
 
-**Easiest — run the wizard:**
+```bash
+easel --version   # → @vincenthopf/easel/x.y.z
+```
+
+<details>
+<summary>Run from source instead</summary>
+
+```bash
+git clone https://github.com/vincenthopf/easel.git && cd easel
+pnpm install && pnpm build
+node dist/entry.js --version
+```
+</details>
+
+## Get started
+
+Run the wizard once:
 
 ```bash
 easel init
 ```
 
-It asks for your Canvas URL and access token (Canvas → Account → Settings → New Access Token), saves
-them to a private config file (`~/.config/easel/.env`), and checks the token works — so `easel` runs from
-any folder.
+It asks for three things and checks them for you:
 
-**Or by hand:** `cp .env.example .env` and fill in:
+1. **Canvas URL** — your institution's Canvas host, e.g. `https://canvas.youruniversity.edu`
+2. **Access token** — Canvas → **Account → Settings → New Access Token** (create one, copy it)
+3. **Library URL** *(optional)* — for `easel library`, e.g. `https://library.youruniversity.edu`
+
+It saves everything to a private file at **`~/.config/easel/.env`** (permissions `600`) and confirms the
+token works by greeting you by name. Because the config lives in your home folder, `easel` then runs from
+**any directory**. Re-run `easel init` anytime to update a value (it pre-fills what you have, token masked).
+
+Then you're off:
+
+```bash
+easel whoami        # confirm the account
+easel today         # today's briefing
+```
+
+<details>
+<summary>Prefer to configure by hand?</summary>
+
+Set environment variables, or drop a `.env` in the folder you run `easel` from:
 
 ```ini
 CANVAS_BASE_URL=https://canvas.youruniversity.edu   # your Canvas host
 CANVAS_TOKEN=your-token-here
 # Optional, for `easel library`:
 LIBRARY_BASE_URL=https://library.youruniversity.edu
+# Optional rate-limit tuning:
+# EASEL_MIN_INTERVAL=0.7
+# EASEL_MAX_INTERVAL=1.8
+# EASEL_RPM=40
 ```
 
-Your token stays local (gitignored `.env` or the config file) and is sent only to your own Canvas host.
-The tool reads only *your* data — the token can't see anyone else's.
+Precedence (first wins): real environment variables, then a `.env` in the current folder, then
+`~/.config/easel/.env`.
+</details>
+
+Your token stays local and is sent only to your own Canvas host. The tool reads only *your* data — the
+token can't see anyone else's.
 
 ## Commands
 
