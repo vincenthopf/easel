@@ -13,12 +13,8 @@ export default class Discussions extends BaseCommand {
     "<%= config.bin %> disc 22222 --limit 5",
     "<%= config.bin %> discussions CHEM101 --json",
   ];
-  static override args = {
-    course: Args.string(courseArg),
-  };
-  static override flags = {
-    limit: Flags.integer({ char: "n", description: "maximum discussions to print", default: 20, min: 1 }),
-  };
+  static override args = { course: Args.string(courseArg) };
+  static override flags = { limit: Flags.integer({ char: "n", description: "maximum discussions to print", default: 20, min: 1 }) };
 
   async run(): Promise<unknown> {
     const { args, flags } = await this.parse(Discussions);
@@ -36,7 +32,6 @@ export default class Discussions extends BaseCommand {
       excerpt: truncate(htmlToText(topic.message ?? ""), 180),
       url: topic.html_url,
     }));
-
     if (!this.jsonEnabled()) {
       if (dto.length === 0) this.log(`No discussions found for ${course.code}.`);
       for (const item of dto) {

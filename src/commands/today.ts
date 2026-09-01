@@ -5,7 +5,7 @@ import { htmlToText, truncate } from "../lib/html.js";
 export default class Today extends BaseCommand {
   static override aliases = ["brief", "now"];
   static override summary = "Compact study briefing for today";
-  static override description = "Show urgent due work, missing submissions, and recent announcements across real subjects.";
+  static override description = "Show urgent due work, Canvas-reported missing submissions, and recent announcements.";
   static override examples = ["<%= config.bin %> today", "<%= config.bin %> brief --json"];
 
   async run(): Promise<unknown> {
@@ -18,7 +18,7 @@ export default class Today extends BaseCommand {
       this.canvas.announcements(courses.map((course) => course.id)),
     ]);
     const recentAnnouncements = announcements
-      .sort((a, b) => String(b.posted_at ?? b.delayed_post_at).localeCompare(String(a.posted_at ?? a.delayed_post_at)))
+      .sort((left, right) => String(right.posted_at ?? right.delayed_post_at).localeCompare(String(left.posted_at ?? left.delayed_post_at)))
       .slice(0, 5)
       .map((item) => {
         const courseId = Number(item.context_code?.replace("course_", ""));
@@ -30,8 +30,7 @@ export default class Today extends BaseCommand {
           excerpt: truncate(htmlToText(item.message ?? ""), 140),
         };
       });
-
-    const dueDto = due.map(({ course, assignment, proctored, submitted, submittedAt, graded }) => ({
+    const dueDto = due.map(({ course, assignment, proctored, submitted, submittedAt, graded, excused, missing: reportedMissing }) => ({
       course: course.code,
       courseId: course.id,
       id: assignment.id,
@@ -42,11 +41,12 @@ export default class Today extends BaseCommand {
       submitted,
       submittedAt,
       graded,
+      excused,
+      missing: reportedMissing,
     }));
-
     const dto = {
-      due: dueDto.filter((item) => !item.submitted).slice(0, 10),
-      submittedDue: dueDto.filter((item) => item.submitted),
+      due: dueDto.filter((item) => !item.submitted && !item.excused).slice(0, 10),
+      submittedDue: dueDto.filter((item) => item.submitted || item.excused),
       missing: missing.slice(0, 10).map((item) => ({
         id: item.id,
         course: byId.get(item.course_id)?.code ?? String(item.course_id),
@@ -57,23 +57,16 @@ export default class Today extends BaseCommand {
       })),
       announcements: recentAnnouncements,
     };
-
     if (!this.jsonEnabled()) {
       this.log("Due soon");
       if (dto.due.length === 0) this.log("  nothing due in the next 7 days");
-      for (const item of dto.due) {
-        this.log(`  ${bullet([dateOnly(item.dueAt), daysUntil(item.dueAt), item.course, item.name, item.proctored ? "PROCTORED hands-off" : undefined])}`);
-      }
+      for (const item of dto.due) this.log(`  ${bullet([dateOnly(item.dueAt), daysUntil(item.dueAt), item.course, item.name, item.proctored ? "PROCTORED hands-off" : undefined])}`);
       this.log("Missing");
-      if (dto.missing.length === 0) this.log("  no missing submissions reported");
-      for (const item of dto.missing) {
-        this.log(`  ${bullet([dateOnly(item.dueAt), item.course, item.name])}`);
-      }
+      if (dto.missing.length === 0) this.log("  no missing submissions reported by Canvas");
+      for (const item of dto.missing) this.log(`  ${bullet([dateOnly(item.dueAt), item.course, item.name])}`);
       this.log("Announcements");
       if (dto.announcements.length === 0) this.log("  none found");
-      for (const item of dto.announcements) {
-        this.log(`  ${bullet([shortDate(item.postedAt), item.course, item.title])}`);
-      }
+      for (const item of dto.announcements) this.log(`  ${bullet([shortDate(item.postedAt), item.course, item.title])}`);
     }
     return dto;
   }

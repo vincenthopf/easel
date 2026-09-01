@@ -1,126 +1,165 @@
 import { existsSync, readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
-import { once } from "node:events";
-import { stdin as input, stdout as output } from "node:process";
-import { createInterface, type Interface } from "node:readline/promises";
+import { stdin, stdout } from "node:process";
+import { createInterface } from "node:readline/promises";
+import type { ReadStream, WriteStream } from "node:tty";
+import { Flags } from "@oclif/core";
 
 import { BaseCommand } from "../base-command.js";
-import { configEnvPath } from "../lib/config.js";
+import { ConfigError, configEnvPath, configReadEnvPath, parseEnv, serializeEnv, validateCanvasRecord } from "../lib/config.js";
+import { CanvasHttpClient } from "../lib/http.js";
+import { atomicWriteFile } from "../lib/storage.js";
 
 export default class Init extends BaseCommand {
   static override aliases = ["setup", "wizard"];
-  static override summary = "Set up your Canvas token and settings (interactive)";
+  static override summary = "Set up Canvas and optional library configuration";
   static override description =
-    "Walks you through connecting easel to your Canvas: your Canvas URL, a personal access token, " +
-    "and (optionally) your library URL. Saves everything to a private config file so easel works from any folder.";
-  static override examples = ["<%= config.bin %> init"];
+    "Store one coherent Canvas URL/token pair in the native user config. Interactive token entry is hidden; automation can use CANVAS_TOKEN or --token-stdin.";
+  static override examples = [
+    "<%= config.bin %> init",
+    "CANVAS_TOKEN=... <%= config.bin %> init --canvas-url https://canvas.example.edu --no-verify",
+    "printf '%s' \"$CANVAS_TOKEN\" | <%= config.bin %> init --canvas-url https://canvas.example.edu --token-stdin",
+  ];
+  static override flags = {
+    "canvas-url": Flags.string({ description: "Canvas base URL for non-interactive setup" }),
+    "library-url": Flags.string({ description: "optional public library base URL" }),
+    "token-stdin": Flags.boolean({ description: "read the Canvas token from standard input", default: false }),
+    "no-verify": Flags.boolean({ description: "save without checking the Canvas profile endpoint", default: false }),
+    "replace-host": Flags.boolean({ description: "allow non-interactive replacement of an existing Canvas host", default: false }),
+  };
 
   protected override requiresCanvasToken(): boolean {
     return false;
   }
 
   async run(): Promise<unknown> {
-    await this.parse(Init);
+    const { flags } = await this.parse(Init);
     const path = configEnvPath();
-    const existing = existsSync(path) ? parseEnv(readFileSync(path, "utf8")) : {};
+    const existingPath = configReadEnvPath();
+    const existing = existsSync(existingPath) ? parseEnv(readFileSync(existingPath, "utf8")) : {};
+    const interactive = !this.jsonEnabled() && Boolean(stdin.isTTY && stdout.isTTY);
+    const values = interactive
+      ? await interactiveValues(existing)
+      : await nonInteractiveValues(existing, flags, process.env);
+    const record = validateCanvasRecord(values.CANVAS_BASE_URL, values.CANVAS_TOKEN, this.configData.allowInsecureLocalhost);
+    await enforceHostChange(existing.CANVAS_BASE_URL, record.baseUrl, interactive, flags["replace-host"]);
 
-    const rl = createInterface({ input, output });
-    let env: Record<string, string>;
-    try {
-      this.log("easel setup — press Enter to keep the [current] value.\n");
-
-      const baseUrl = normalizeUrl(
-        await ask(rl, "Canvas URL (e.g. https://canvas.youruni.edu)", existing.CANVAS_BASE_URL),
+    if (!flags["no-verify"]) {
+      const verificationConfig = {
+        ...this.configData,
+        baseUrl: record.baseUrl,
+        canvasOrigin: record.canvasOrigin,
+        token: record.token,
+      };
+      const verificationClient = new CanvasHttpClient(verificationConfig);
+      const profile = await verificationClient.getJson<{ name?: string; primary_email?: string }>(
+        verificationClient.canvasUrl("users/self/profile"),
       );
-      this.log("  Token: Canvas → Account → Settings → New Access Token");
-      const token = (await ask(rl, "Canvas access token", existing.CANVAS_TOKEN)).trim();
-      const libraryBaseUrl = normalizeUrl(
-        await ask(rl, "Library URL (optional, for `easel library`)", existing.LIBRARY_BASE_URL ?? ""),
-      );
-
-      env = { ...existing, CANVAS_BASE_URL: baseUrl, CANVAS_TOKEN: token };
-      if (libraryBaseUrl) env.LIBRARY_BASE_URL = libraryBaseUrl;
-      else delete env.LIBRARY_BASE_URL;
-    } finally {
-      rl.close();
+      const identity = profile.data.name ?? profile.data.primary_email ?? "your account";
+      this.log(`Verified ${identity}.`);
     }
 
-    await writeFile(path, serializeEnv(env), { mode: 0o600 });
-    this.log(`\nSaved to ${path}`);
-
-    if (env.CANVAS_BASE_URL && env.CANVAS_TOKEN) {
-      const who = await verify(env.CANVAS_BASE_URL, env.CANVAS_TOKEN);
-      if (who) this.log(`Connected as ${who}. You're set — try \`easel today\`.`);
-      else this.log("Couldn't verify that token — check the URL and token, then run `easel init` again.");
-    }
-
-    return { path, configured: Boolean(env.CANVAS_TOKEN) };
+    const output: Record<string, string> = { ...existing, ...values, CANVAS_BASE_URL: record.baseUrl, CANVAS_TOKEN: record.token };
+    if (!output.LIBRARY_BASE_URL) delete output.LIBRARY_BASE_URL;
+    await atomicWriteFile(path, serializeEnv(output));
+    this.log(`Saved private configuration to ${path}`);
+    return { path, configured: true, source: "user", canvasOrigin: record.canvasOrigin, libraryConfigured: Boolean(output.LIBRARY_BASE_URL) };
   }
 }
 
-async function ask(rl: Interface, label: string, current?: string): Promise<string> {
-  const shown = current ? ` [${mask(label, current)}]` : "";
-  let answer = "";
+async function interactiveValues(existing: Record<string, string>): Promise<Record<string, string>> {
+  stdout.write("easel setup\n");
+  const baseUrl = normalizeUrl(await askLine("Canvas URL", existing.CANVAS_BASE_URL));
+  stdout.write("Canvas token input is hidden. Press Enter to keep the configured token.\n");
+  const enteredToken = await readHiddenInput(stdin, stdout, existing.CANVAS_TOKEN ? "Canvas access token [configured]: " : "Canvas access token: ");
+  const token = enteredToken.trim() || existing.CANVAS_TOKEN || "";
+  const libraryBaseUrl = normalizeUrl(await askLine("Library URL (optional)", existing.LIBRARY_BASE_URL));
+  return { CANVAS_BASE_URL: baseUrl, CANVAS_TOKEN: token, LIBRARY_BASE_URL: libraryBaseUrl };
+}
+
+async function nonInteractiveValues(
+  existing: Record<string, string>,
+  flags: { "canvas-url"?: string; "library-url"?: string; "token-stdin": boolean },
+  environment: Record<string, string | undefined>,
+): Promise<Record<string, string>> {
+  const baseUrl = normalizeUrl(flags["canvas-url"] ?? environment.CANVAS_BASE_URL ?? "");
+  const stdinToken = flags["token-stdin"] ? (await readAllStdin()).trim() : "";
+  const token = stdinToken || environment.CANVAS_TOKEN?.trim() || "";
+  const libraryBaseUrl = normalizeUrl(flags["library-url"] ?? environment.LIBRARY_BASE_URL ?? existing.LIBRARY_BASE_URL ?? "");
+  if (!baseUrl || !token) {
+    throw new ConfigError(
+      "Non-interactive setup requires --canvas-url and a token from CANVAS_TOKEN or --token-stdin. Tokens are not accepted as command-line arguments.",
+    );
+  }
+  return { CANVAS_BASE_URL: baseUrl, CANVAS_TOKEN: token, LIBRARY_BASE_URL: libraryBaseUrl };
+}
+
+export async function readHiddenInput(input: ReadStream, output: WriteStream, prompt: string): Promise<string> {
+  if (!input.isTTY || typeof input.setRawMode !== "function") {
+    throw new ConfigError("Hidden token entry requires an interactive terminal. Use CANVAS_TOKEN or --token-stdin for automation.");
+  }
+  output.write(prompt);
+  const previousRaw = input.isRaw;
+  return new Promise((resolve, reject) => {
+    let value = "";
+    const cleanup = () => {
+      input.off("data", onData);
+      input.setRawMode(Boolean(previousRaw));
+      input.pause();
+    };
+    const onData = (chunk: Buffer | string) => {
+      for (const character of chunk.toString("utf8")) {
+        if (character === "\r" || character === "\n") {
+          output.write("\n");
+          cleanup();
+          resolve(value);
+          return;
+        }
+        if (character === "\u0003") {
+          output.write("\n");
+          cleanup();
+          reject(new ConfigError("Setup cancelled."));
+          return;
+        }
+        if (character === "\u007f" || character === "\b") value = value.slice(0, -1);
+        else if (character >= " ") value += character;
+      }
+    };
+    input.setRawMode(true);
+    input.resume();
+    input.on("data", onData);
+  });
+}
+
+async function askLine(label: string, current?: string): Promise<string> {
+  const reader = createInterface({ input: stdin, output: stdout });
   try {
-    // Resolve on EOF/Ctrl-D instead of hanging on an unsettled await.
-    answer = await Promise.race([
-      rl.question(`${label}${shown}: `),
-      once(rl, "close").then(() => ""),
-    ]);
-  } catch {
-    answer = "";
+    const shown = current ? ` [${current}]` : "";
+    const answer = await reader.question(`${label}${shown}: `);
+    return answer.trim() || current || "";
+  } finally {
+    reader.close();
   }
-  return answer.trim() || current || "";
 }
 
-function mask(label: string, value: string): string {
-  if (/token/i.test(label) && value.length > 8) return `${value.slice(0, 4)}…${value.slice(-2)}`;
-  return value;
+async function readAllStdin(): Promise<string> {
+  let output = "";
+  for await (const chunk of stdin) output += chunk.toString();
+  return output;
 }
 
-function normalizeUrl(raw: string): string {
-  let s = raw.trim().replace(/\/+$/, "");
-  if (s && !/^https?:\/\//i.test(s)) s = `https://${s}`;
-  return s;
+function normalizeUrl(value: string | undefined): string {
+  let output = value?.trim().replace(/\/+$/, "") ?? "";
+  if (output && !/^[a-z][a-z0-9+.-]*:\/\//i.test(output)) output = `https://${output}`;
+  return output;
 }
 
-function parseEnv(text: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const raw of text.split("\n")) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#") || !line.includes("=")) continue;
-    const idx = line.indexOf("=");
-    const key = line.slice(0, idx).trim();
-    let val = line.slice(idx + 1).trim();
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
-    }
-    out[key] = val;
+async function enforceHostChange(existing: string | undefined, next: string, interactive: boolean, replaceHost: boolean): Promise<void> {
+  if (!existing || normalizeUrl(existing) === next) return;
+  if (!interactive && !replaceHost) {
+    throw new ConfigError("The Canvas host differs from the saved host. Re-run with --replace-host after verifying the new origin.");
   }
-  return out;
-}
-
-function serializeEnv(env: Record<string, string>): string {
-  const lines = [
-    "# easel configuration — written by `easel init`. Keep this file private.",
-    "",
-  ];
-  for (const [key, value] of Object.entries(env)) {
-    if (value === undefined || value === "") continue;
-    lines.push(`${key}=${value}`);
-  }
-  return `${lines.join("\n")}\n`;
-}
-
-async function verify(baseUrl: string, token: string): Promise<string | null> {
-  try {
-    const res = await fetch(`${baseUrl}/api/v1/users/self/profile`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { name?: string; primary_email?: string };
-    return data.name ?? data.primary_email ?? "your account";
-  } catch {
-    return null;
+  if (interactive) {
+    const answer = (await askLine(`Replace saved Canvas host ${normalizeUrl(existing)} with ${next}? Type yes to continue`)).toLowerCase();
+    if (answer !== "yes") throw new ConfigError("Canvas host change cancelled.");
   }
 }

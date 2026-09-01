@@ -2,19 +2,14 @@ import { Args } from "@oclif/core";
 
 import { BaseCommand, courseArg } from "../base-command.js";
 import { bullet } from "../lib/format.js";
+import { sanitizeUrl } from "../lib/http.js";
 
 export default class Modules extends BaseCommand {
   static override aliases = ["module", "mods"];
-  static override summary = "List modules and page slugs for a course";
-  static override description = "List Canvas modules with compact item lines. Page items include the slug used by `easel page`.";
-  static override examples = [
-    "<%= config.bin %> modules BIO101",
-    "<%= config.bin %> mods 11111",
-    "<%= config.bin %> modules CHEM101 --json",
-  ];
-  static override args = {
-    course: Args.string(courseArg),
-  };
+  static override summary = "List modules and item references for a course";
+  static override description = "List Canvas modules. Page items include slugs and File items include content identifiers.";
+  static override examples = ["<%= config.bin %> modules BIO101", "<%= config.bin %> mods 11111", "<%= config.bin %> modules CHEM101 --json"];
+  static override args = { course: Args.string(courseArg) };
 
   async run(): Promise<unknown> {
     const { args } = await this.parse(Modules);
@@ -26,18 +21,18 @@ export default class Modules extends BaseCommand {
       position: module.position,
       items: (module.items ?? []).map((item) => ({
         id: item.id,
+        contentId: item.content_id,
         title: item.title,
         type: item.type,
         pageSlug: item.page_url,
-        url: item.html_url,
+        url: item.html_url ? sanitizeUrl(item.html_url) : undefined,
       })),
     }));
-
     if (!this.jsonEnabled()) {
       for (const module of dto) {
         this.log(`${course.code} · ${module.position ?? "-"} · ${module.name}`);
         for (const item of module.items) {
-          this.log(`  ${bullet([item.type, item.title, item.pageSlug ? `slug ${item.pageSlug}` : undefined])}`);
+          this.log(`  ${bullet([item.type, item.title, item.pageSlug ? `slug ${item.pageSlug}` : undefined, item.contentId ? `content ${item.contentId}` : undefined])}`);
         }
       }
     }

@@ -1,15 +1,10 @@
-# Secrets — never commit the Canvas token
 .env
 *.env
 !.env.example
 config.json
 easel.config.json
-
-# Node / build
 node_modules/
 dist/
 *.tsbuildinfo
-
-# Local cache & scratch
 .working/
 .cache/

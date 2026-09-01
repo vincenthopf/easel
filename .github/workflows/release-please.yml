@@ -1,50 +1,74 @@
-name: release-please
+name: Release Please
 
 on:
   push:
     branches: [main]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
-  release-please:
+  validate:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: node scripts/release-check.mjs
+      - run: pnpm pack:artifact
+      - run: pnpm package:smoke
+
+  release:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v4
-        id: release
+      - id: release
+        uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
   publish:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ needs.release.outputs.release_created == 'true' }}
+    needs: [validate, release]
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # OIDC — no npm token needed (Trusted Publishing)
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
         with:
-          node-version: "22"
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
       - run: pnpm build
-      # Trusted Publishing (OIDC) needs npm >= 11.5.1
-      - run: npm install -g npm@latest
-      # Publish only if this exact version isn't already on npm, so a one-time
-      # bootstrap publish and CI never collide on the same version.
-      - name: Publish to npm (OIDC, idempotent)
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          if npm view "@vincenthopf/easel@${VERSION}" version >/dev/null 2>&1; then
-            echo "@vincenthopf/easel@${VERSION} already published — skipping."
-          else
-            npm publish
-          fi
+      - run: RELEASE_TAG=${{ needs.release.outputs.tag_name }} node scripts/release-check.mjs
+      - run: pnpm pack:artifact
+      - run: pnpm package:smoke
+      - run: npm install --global npm@11.16.0
+      - run: npm publish .working/package/*.tgz --access public
