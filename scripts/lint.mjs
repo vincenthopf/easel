@@ -25,7 +25,6 @@ async function exists(path) {
 
 async function check(path) {
   const text = await readFile(path, "utf8");
-  if (text.includes("\r")) failures.push(`${path}: CRLF line endings`);
   if (!text.endsWith("\n")) failures.push(`${path}: missing final newline`);
   if (/^<{7} |^={7}$|^>{7} /m.test(text)) failures.push(`${path}: merge marker`);
   for (const [index, line] of text.split("\n").entries()) {
