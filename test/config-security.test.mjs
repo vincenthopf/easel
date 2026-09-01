@@ -124,13 +124,15 @@ test("credential namespaces change across host and account switches without expo
   assert.doesNotMatch(one, /first|secret/);
 });
 
-test("created user directories are private", async () => {
+test("created user directories use private POSIX modes where supported", async () => {
   const place = await workspace();
   try {
     await place.writeUserEnv({ CANVAS_BASE_URL: "https://canvas.user.example", CANVAS_TOKEN: "user-token" });
     loadConfig(options(place, place.env));
-    const mode = (await stat(join(place.config, "easel"))).mode & 0o777;
-    assert.equal(mode & 0o077, 0);
+    if (process.platform !== "win32") {
+      const mode = (await stat(join(place.config, "easel"))).mode & 0o777;
+      assert.equal(mode & 0o077, 0);
+    }
   } finally {
     await place.cleanup();
   }

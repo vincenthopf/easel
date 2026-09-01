@@ -44,7 +44,7 @@ test("text output is restrictive, atomic, and collision-safe", async () => {
     const second = writeOutputFile(join(root, "notes.txt"), "two");
     assert.notEqual(first.path, second.path);
     assert.equal(await readFile(first.path, "utf8"), "one");
-    assert.equal((await stat(first.path)).mode & 0o077, 0);
+    assertPrivateMode((await stat(first.path)).mode);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -57,7 +57,7 @@ test("atomic configuration writes cannot leave partial files", async () => {
     await atomicWriteFile(path, "CANVAS_TOKEN=one\n");
     await atomicWriteFile(path, "CANVAS_TOKEN=two\n");
     assert.equal(await readFile(path, "utf8"), "CANVAS_TOKEN=two\n");
-    assert.equal((await stat(path)).mode & 0o077, 0);
+    assertPrivateMode((await stat(path)).mode);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -78,7 +78,7 @@ test("downloads stream to a private atomic destination", async () => {
     };
     const result = await pullCanvasFile(canvas, { courseId: 1, fileId: 9, original: "1/9" }, { directory: root });
     assert.equal(await readFile(result.path, "utf8"), "firstsecond");
-    assert.equal((await stat(result.path)).mode & 0o077, 0);
+    assertPrivateMode((await stat(result.path)).mode);
     assert.equal(result.bytes, 11);
   } finally {
     await Promise.all([server.close(), place.cleanup(), rm(root, { recursive: true, force: true })]);
@@ -133,5 +133,8 @@ test("hidden token input does not echo secret bytes", async () => {
   assert.equal(await promise, "super-secret");
   assert.equal(output, "Token: \n");
   assert.doesNotMatch(output, /super-secret/);
+});
+
+function assertPrivateMode(mode) {
+  if (process.platform !== "win32") assert.equal(mode & 0o077, 0);
 }
-);
