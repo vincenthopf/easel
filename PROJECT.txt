@@ -1,63 +1,98 @@
-easel — a calmer front door to Canvas
-=====================================
+Easel project contract
+======================
 
-What it is
-----------
-A read-only command-line tool that makes your Canvas actually usable:
-your deadlines, marks, feedback, module content, announcements, discussions,
-embedded file downloads and the public library — all from the terminal, in
-plain text or lean JSON your agents can read.
+Purpose
+-------
 
-It is READ-ONLY by design. It only ever asks Canvas and the public library for
-information; it can never submit work, take a quiz, post, or change anything
-in your account. The HTTP client exposes GET only.
+Easel is a read-only oclif TypeScript CLI for compact Canvas study data and public library content. Its primary security property is that a personal Canvas bearer token cannot be redirected or inherited by an unrelated request.
 
-Setup
------
-1. Install pnpm if you don't have it.
-2. In this folder:  cp .env.example .env  and paste your own Canvas token.
-   (Canvas → Account → Settings → New Access Token.)
-3. pnpm install
-4. pnpm build
-5. node dist/entry.js whoami
-
-Everyday commands
+Supported runtime
 -----------------
-  easel whoami                Confirm the account behind the token
-  easel courses               Your real subjects (add --all to include admin shells)
-  easel today                 Briefing: due soon, missing work, announcements
-  easel due --days 21         Assignments due soon, across subjects
-  easel marks                 Scores, pass-line read, weighted current grade projection
-  easel modules BIO101       Module list and page slugs for a subject
-  easel page BIO101 <slug>   Fetch one module page as clean text
-  easel announcements         Recent announcements across subjects
-  easel discussions CHEM101   Discussion forums for a subject
-  easel files BIO101         File links embedded in assignments/pages/announcements
-  easel pull 11111/33333   Resolve Canvas file metadata and download the signed URL
-  easel library search "<q>"  Search the public library guides (no login)
-  easel library fetch <url>   Pull one public library page as clean text
 
-Content commands are compact by default. Use --full for full text,
---objective "focus" for relevant passages, -o <file> to write full content to
-disk and print only path/bytes/title, and --json for lean shaped DTOs.
+- Node.js 20, 22, and 24
+- macOS, Linux, and Windows
+- pnpm 10.12.3
+- npm trusted publishing from GitHub-hosted Node 24 runners
 
-Rate limiting
+Configuration boundary
+----------------------
+
+CANVAS_BASE_URL and CANVAS_TOKEN form one record. Source selection is:
+
+1. A complete process-environment pair.
+2. A complete current-directory pair only when EASEL_PROJECT_CONFIG=1 is set in the process environment.
+3. A complete native user-config pair.
+
+A partial selected source is an error. A Canvas command treats project Canvas settings as an error without explicit opt-in. Non-Canvas commands ignore project Canvas credentials unless opted in. The loader does not mutate process.env. Diagnostics may identify the source kind and path but never the token.
+
+Native user paths are used on macOS, Linux/XDG, and Windows. Private config, cache, and state directories use restrictive permissions where supported. Secret-bearing writes use mode 0600 and atomic replacement.
+The legacy `~/.config/easel/.env` path is read on macOS and Windows only when the native file is absent; `easel init` then migrates the verified record to the native path.
+
+HTTP boundary
 -------------
-Every request — Canvas and library alike — is paced like a human: a randomised
-gap between calls and a hard ceiling per minute, shared across all invocations
-on this machine through a lock and state file in the cache dir. HTTP 429 and
-403 "rate limit exceeded" responses back off exponentially with jitter.
 
-Where the lines are
+CanvasHttpClient is the only authenticated transport. It validates every initial URL, pagination URL, and redirect against the configured Canvas origin before constructing the Authorization header. It rejects cross-origin requests and HTTPS downgrades.
+
+PublicHttpClient has no token field. It handles public library pages and signed Canvas file URLs. Public redirects are manual, bounded, and protocol-validated. Library search can be restricted to the configured library origin. Signed file downloads may move between HTTPS origins because Canvas commonly delegates to a file host, but they remain unauthenticated.
+
+Request policy
+--------------
+
+Every network operation is a bounded GET:
+
+- configurable deadline and external cancellation
+- bounded retries with backoff
+- manual redirect cap
+- response-byte cap
+- download-byte cap
+- pagination page and item caps
+- repeated-link detection
+- bounded rate-state lock waits
+
+Timeouts, invalid responses, unsupported endpoints, authentication failures, authorization failures, and pagination failures remain distinct errors. URLs in errors contain origin and path only. Response text is bounded and redacted.
+
+State and storage
+-----------------
+
+Canvas course cache and rate state live below a namespace derived from a one-way hash of Canvas origin and credential identity. Switching host or token cannot reuse another account's state. Raw token material is never used in a path or log.
+
+Cache, rate state, update state, user config, exports, and downloads use same-directory temporary files and atomic commit operations. Explicit download output refuses collision unless --overwrite is supplied. Text exports choose a free numbered name. Download names handle Windows reserved names and trailing-dot or trailing-space rules.
+
+Canvas domain rules
 -------------------
-Fine, by design: reading your own data to organise, understand and plan.
-Not built, on purpose: anything that writes to Canvas, anything that operates
-during a proctored Respondus/webcam assessment, per-question quiz review, or
-Canvas conversations/planner/calendar writes.
 
-Future browser-engine phase
----------------------------
-Reading List/eReserve and the three external LTI tabs need an authenticated
-browser session rather than plain Canvas GET APIs. Keep that out of the current
-read-only HTTP client; handle it later as a separate browser engine phase with
-explicit human-paced navigation and no assessment automation.
+- Course references prefer exact case-insensitive codes.
+- Prefixes must resolve to exactly one active course.
+- Missing-submission 401 and 403 responses propagate.
+- A 404 missing-submission endpoint becomes an unsupported-feature error, not an empty list.
+- Due windows use exact instants and do not silently include overdue work.
+- Excused, submitted, graded, and missing states are distinct.
+- Module File items are included alongside embedded file links.
+- Parsed verifier values are used for metadata and signed-download resolution but omitted from command JSON.
+
+Grade projections
+-----------------
+
+Canvas-reported current score is preferred. Local weighted and points calculations are labelled as simple estimates. Excused and omitted work is excluded. Zero-point extra credit does not increase the denominator. Drop rules suppress the finalLockedIn claim and produce a limitation. Grading periods, late policies, unpublished changes, and manual overrides remain Canvas-controlled.
+
+Library boundary
+----------------
+
+Library behavior is generic. No institution-specific Springshare source or site identifiers are hard-coded. Search uses public routes under LIBRARY_BASE_URL. Fetch can read a public HTTPS page. Neither operation can access the Canvas token.
+
+Command and JSON compatibility
+------------------------------
+
+Existing command names and primary JSON fields are retained. Default course discovery now includes every active course instead of applying an institution-specific course-code regex; `courses --all` remains accepted for compatibility. Security corrections add grade basis and limitation fields, submission-state fields, File module identifiers, and --overwrite. File discovery replaces verifier output with hasVerifier and removes signed query values from URLs.
+
+Testing
+-------
+
+The test suite uses Node's built-in test runner after compiling TypeScript. Mock servers prove configuration coherence, origin enforcement, redirect handling, pagination bounds, deadlines, redaction, account-scoped state, course ambiguity, error classification, grade limits, module files, streaming downloads, collision behavior, filename safety, hidden token input, generic library behavior, and update-check silence.
+
+CI and release
+--------------
+
+CI runs on every push and pull request into main. Ubuntu validates Node 20, 22, and 24. Ubuntu, macOS, and Windows install and exercise the packed tarball in an isolated prefix. Release validation repeats lint, typecheck, tests, build, version consistency, pack, and installed-package smoke checks on the exact main commit.
+
+Only the release-please job receives contents and pull-request write permissions. Only the publish job receives id-token write. npm is pinned to 11.16.0 for trusted publishing, which requires npm 11.5.1 or newer and Node 22.14 or newer. No long-lived npm token is used.
