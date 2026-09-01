@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 
 const packageDirectory = resolve(".working/package");
@@ -21,7 +21,8 @@ const prefix = join(root, "prefix");
 const cache = join(root, "cache");
 const config = join(root, "config");
 try {
-  await run(process.platform === "win32" ? "npm.cmd" : "npm", ["install", "-g", "--prefix", prefix, tarball]);
+  const npmCli = await findNpmCli();
+  await run(process.execPath, [npmCli, "install", "-g", "--prefix", prefix, tarball]);
   const executable = process.platform === "win32" ? join(prefix, "easel.cmd") : join(prefix, "bin", "easel");
   await run(executable, ["--help"], { EASEL_NO_UPDATE_CHECK: "1" });
   await run(executable, ["--version"], { EASEL_NO_UPDATE_CHECK: "1" });
@@ -67,7 +68,8 @@ async function run(command, arguments_, additions = {}) {
       PATH: `${process.env.PATH ?? ""}${delimiter}${join(process.cwd(), "node_modules", ".bin")}`,
       ...additions,
     };
-    const child = spawn(command, arguments_, { env: environment, stdio: ["ignore", "pipe", "pipe"] });
+    const shell = process.platform === "win32" && command.toLowerCase().endsWith(".cmd");
+    const child = spawn(command, arguments_, { env: environment, shell, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
@@ -78,4 +80,23 @@ async function run(command, arguments_, additions = {}) {
       else reject(new Error(`${command} ${arguments_.join(" ")} failed with ${signal ?? code}\n${stdout}\n${stderr}`));
     });
   });
+}
+
+async function findNpmCli() {
+  const executableDirectory = dirname(process.execPath);
+  const candidates = process.platform === "win32"
+    ? [join(executableDirectory, "node_modules", "npm", "bin", "npm-cli.js")]
+    : [
+        join(executableDirectory, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js"),
+        join(executableDirectory, "node_modules", "npm", "bin", "npm-cli.js"),
+      ];
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+  throw new Error(`npm CLI was not found beside ${process.execPath}`);
 }
