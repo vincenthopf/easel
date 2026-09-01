@@ -16,10 +16,7 @@ export default class Whoami extends BaseCommand {
       email: profile.primary_email,
       login: profile.login_id,
     };
-
-    if (!this.jsonEnabled()) {
-      this.log(`${dto.name} · ${dto.email ?? dto.login ?? "Canvas user"} · id ${dto.id}`);
-    }
+    if (!this.jsonEnabled()) this.log(`${dto.name} · ${dto.email ?? dto.login ?? "Canvas user"} · id ${dto.id}`);
     return dto;
   }
 }

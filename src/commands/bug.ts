@@ -4,7 +4,7 @@ const BUG_URL = "https://vjh.io/bugreport";
 
 export default class Bug extends BaseCommand {
   static override aliases = ["report", "feedback"];
-  static override summary = "Report easel bugs or unexpected output";
+  static override summary = "Report Easel bugs or unexpected output";
   static override description = "Print the bug-report URL and the details agents should include.";
   static override examples = ["<%= config.bin %> bug", "<%= config.bin %> report"];
 
@@ -14,11 +14,7 @@ export default class Bug extends BaseCommand {
 
   async run(): Promise<unknown> {
     await this.parse(Bug);
-    const dto = {
-      url: BUG_URL,
-      include: ["command run", "flags", "expected vs actual", "easel version"],
-    };
-
+    const dto = { url: BUG_URL, include: ["command run", "flags", "expected vs actual", "Easel version"] };
     if (!this.jsonEnabled()) {
       this.log(BUG_URL);
       this.log("Include:");

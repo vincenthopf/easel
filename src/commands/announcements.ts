@@ -7,7 +7,7 @@ import { htmlToText, truncate } from "../lib/html.js";
 export default class Announcements extends BaseCommand {
   static override aliases = ["announce", "ann"];
   static override summary = "List recent Canvas announcements";
-  static override description = "List announcements across real subjects by default, or one course when --course is supplied.";
+  static override description = "List announcements across active courses by default, or one course when --course is supplied.";
   static override examples = [
     "<%= config.bin %> announcements",
     "<%= config.bin %> ann --course BIO101",
@@ -23,7 +23,7 @@ export default class Announcements extends BaseCommand {
     const courses = flags.course ? [await this.canvas.resolveCourse(flags.course)] : await this.canvas.courses();
     const byId = new Map(courses.map((course) => [course.id, course]));
     const items = (await this.canvas.announcements(courses.map((course) => course.id)))
-      .sort((a, b) => String(b.posted_at ?? b.delayed_post_at).localeCompare(String(a.posted_at ?? a.delayed_post_at)))
+      .sort((left, right) => String(right.posted_at ?? right.delayed_post_at).localeCompare(String(left.posted_at ?? left.delayed_post_at)))
       .slice(0, flags.limit);
     const dto = items.map((item) => {
       const courseId = Number(item.context_code?.replace("course_", ""));
@@ -37,12 +37,9 @@ export default class Announcements extends BaseCommand {
         url: item.html_url,
       };
     });
-
     if (!this.jsonEnabled()) {
       if (dto.length === 0) this.log("No announcements found.");
-      for (const item of dto) {
-        this.log(bullet([shortDate(item.postedAt), item.course, item.title, item.excerpt]));
-      }
+      for (const item of dto) this.log(bullet([shortDate(item.postedAt), item.course, item.title, item.excerpt]));
     }
     return dto;
   }

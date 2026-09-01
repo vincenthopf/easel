@@ -40,13 +40,17 @@ export function daysUntil(value?: string | null): string {
   return `${days}d`;
 }
 
-export function dueStatus(item: { dueAt?: string | null; submitted: boolean; submittedAt?: string | null }): string {
+export function dueStatus(item: {
+  dueAt?: string | null;
+  submitted: boolean;
+  submittedAt?: string | null;
+  excused?: boolean;
+}): string {
+  if (item.excused) return "excused";
   if (!item.submitted) return daysUntil(item.dueAt);
-
-  const due = item.dueAt ? new Date(item.dueAt).getTime() : NaN;
-  const submitted = item.submittedAt ? new Date(item.submittedAt).getTime() : NaN;
+  const due = item.dueAt ? new Date(item.dueAt).getTime() : Number.NaN;
+  const submitted = item.submittedAt ? new Date(item.submittedAt).getTime() : Number.NaN;
   if (!Number.isFinite(due) || !Number.isFinite(submitted)) return "submitted ✓";
-
   return submitted <= due ? "submitted ✓ on-time" : "submitted ✓ late";
 }
 
