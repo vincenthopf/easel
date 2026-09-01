@@ -4,7 +4,7 @@ import { AGENT_BUG_POINTER } from "./lib/agent-messages.js";
 import { CanvasClient } from "./lib/canvas.js";
 import { ConfigError, loadConfig } from "./lib/config.js";
 import type { Config } from "./lib/config.js";
-import { HttpError } from "./lib/http.js";
+import { isUserError } from "./lib/errors.js";
 import { writeOutputFile } from "./lib/html.js";
 import { startUpdateCheck } from "./lib/update-check.js";
 
@@ -16,10 +16,10 @@ export abstract class BaseCommand extends Command {
 
   protected override async init(): Promise<void> {
     await super.init();
-    startUpdateCheck(this.config);
     try {
       this.configData = loadConfig({ requireToken: this.requiresCanvasToken() });
-      this.canvas = new CanvasClient(this.configData);
+      if (this.configData.baseUrl && this.configData.token) this.canvas = new CanvasClient(this.configData);
+      startUpdateCheck(this.configData, this.config.version, { jsonRequested: process.argv.includes("--json") });
     } catch (error) {
       if (error instanceof ConfigError) this.error(error.message);
       throw error;
@@ -34,12 +34,7 @@ export abstract class BaseCommand extends Command {
     return contentFlags;
   }
 
-  protected outputContent(params: {
-    title?: string;
-    text: string;
-    rendered: string;
-    output?: string;
-  }): void {
+  protected outputContent(params: { title?: string; text: string; rendered: string; output?: string }): void {
     if (params.output) {
       const saved = writeOutputFile(params.output, params.text);
       this.log(`${saved.path} · ${saved.bytes} bytes${params.title ? ` · ${params.title}` : ""}`);
@@ -54,27 +49,17 @@ export abstract class BaseCommand extends Command {
   }
 
   protected override async catch(error: Error & { exitCode?: number }): Promise<void> {
+    if (isUserError(error)) this.error(error.message, { exit: error.exitCode });
+    if (["CLIError", "ArgError", "ParserError"].includes(error.name)) return super.catch(error);
     this.logToStderr(AGENT_BUG_POINTER);
-    if (error instanceof HttpError) {
-      this.error(error.message, { exit: error.status >= 500 ? 2 : 1 });
-    }
     return super.catch(error);
   }
 }
 
 export const contentFlags = {
-  full: Flags.boolean({
-    char: "f",
-    description: "return full content instead of a compact excerpt",
-    default: false,
-  }),
-  objective: Flags.string({
-    description: "focus long content on this topic",
-  }),
-  output: Flags.string({
-    char: "o",
-    description: "write full content to a file and print only a short summary",
-  }),
+  full: Flags.boolean({ char: "f", description: "return full content instead of a compact excerpt", default: false }),
+  objective: Flags.string({ description: "focus long content on this topic" }),
+  output: Flags.string({ char: "o", description: "write full content to a new file and print only a short summary" }),
 };
 
 export const courseArg = {
