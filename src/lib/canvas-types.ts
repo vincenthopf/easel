@@ -25,6 +25,7 @@ export interface Assignment {
   description?: string | null;
   submission_types?: string[];
   assignment_group_id?: number;
+  omit_from_final_grade?: boolean;
 }
 
 export interface Submission {
@@ -36,9 +37,16 @@ export interface Submission {
   workflow_state?: string;
   late?: boolean;
   missing?: boolean;
+  excused?: boolean;
   assignment?: Assignment;
   submission_comments?: Array<{ comment?: string; author_name?: string }>;
   rubric_assessment?: unknown;
+}
+
+export interface AssignmentGroupRules {
+  drop_lowest?: number;
+  drop_highest?: number;
+  never_drop?: number[];
 }
 
 export interface AssignmentGroup {
@@ -46,12 +54,14 @@ export interface AssignmentGroup {
   name: string;
   group_weight?: number;
   assignments?: Assignment[];
+  rules?: AssignmentGroupRules;
 }
 
 export interface ModuleItem {
   id: number;
   title: string;
   type: string;
+  content_id?: number;
   page_url?: string;
   html_url?: string;
   url?: string;
